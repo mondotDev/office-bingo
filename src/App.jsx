@@ -20,6 +20,7 @@ import { generateBoard, checkWin } from './utils';
 import BingoBoard from './components/BingoBoard';
 import Leaderboard from './components/Leaderboard';
 import Confetti from 'react-confetti';
+import SettingsMenu from './components/SettingsMenu';
 
 export default function App() {
   const auth = getAuth(firebaseApp);
@@ -35,7 +36,12 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (!u) return;
+      if (!u) {
+        setUser(null);
+        setBoard([]);
+        setSelected([]);
+        return;
+      }
       setUser(u);
 
       await setDoc(
@@ -142,6 +148,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white overflow-hidden">
+      {user && <SettingsMenu user={user} />}
       <Leaderboard data={leaderboard} />
 
       <div className="flex-1 p-4 overflow-y-auto">
