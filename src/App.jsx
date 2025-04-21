@@ -33,25 +33,21 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [roundInfo, setRoundInfo] = useState(null);
 
-  // 1. Auth & initial load
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) return;
       setUser(u);
 
-      // Save display name
       await setDoc(
         doc(db, 'users', u.uid),
         { name: u.displayName },
         { merge: true }
       );
 
-      // Load terms
       const termsSnap = await getDocs(collection(db, 'terms'));
       const allTerms = termsSnap.docs.map((d) => d.data().text);
       setTerms(allTerms);
 
-      // Load or init board
       const boardRef = doc(db, 'boards', u.uid);
       const boardSnap = await getDoc(boardRef);
       if (!boardSnap.exists()) {
@@ -67,7 +63,6 @@ export default function App() {
         setSelected(data.selected);
       }
 
-      // Load leaderboard
       const usersSnap = await getDocs(collection(db, 'users'));
       setLeaderboard(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
@@ -75,7 +70,6 @@ export default function App() {
     return unsubscribe;
   }, [auth, db]);
 
-  // 2. Round broadcast (skip initial load)
   useEffect(() => {
     const roundRef = doc(db, 'round', 'current');
     let first = true;
@@ -94,7 +88,6 @@ export default function App() {
     return unsubscribe;
   }, [db]);
 
-  // 3. Select square
   const handleSelect = async (idx) => {
     if (!user || board[idx] === 'FREE') return;
 
@@ -133,7 +126,6 @@ export default function App() {
     }
   };
 
-  // 4. Reset board
   const resetMyBoard = async () => {
     const newBoard = generateBoard(terms);
     const sel0 = Array(25).fill(false);
@@ -149,21 +141,23 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white">
+    <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white overflow-hidden">
       <Leaderboard data={leaderboard} />
 
-      <div className="flex-1 p-4">
+      <div className="flex-1 p-4 overflow-y-auto">
         {!user ? (
-          <button
-            onClick={() => signInWithPopup(auth, provider)}
-            className="bg-blue-500 px-4 py-2 rounded"
-          >
-            Sign in with Google
-          </button>
+          <div className="flex justify-center items-center h-full">
+            <button
+              onClick={() => signInWithPopup(auth, provider)}
+              className="bg-blue-500 px-6 py-3 text-lg rounded w-full sm:w-auto"
+            >
+              Sign in with Google
+            </button>
+          </div>
         ) : (
           <>
             {roundInfo && (
-              <div className="fixed top-0 w-full bg-green-600 text-center py-3 z-10">
+              <div className="fixed top-0 w-full bg-green-600 text-center py-3 z-10 text-sm sm:text-base">
                 🎉 {roundInfo.winnerName} got a BINGO!
                 <button
                   onClick={resetMyBoard}
@@ -174,13 +168,14 @@ export default function App() {
               </div>
             )}
 
-            <BingoBoard
-              board={board}
-              selected={selected}
-              onSelect={handleSelect}
-            />
-
-            {roundInfo && <Confetti recycle={false} />}
+            <div className="mt-12">
+              <BingoBoard
+                board={board}
+                selected={selected}
+                onSelect={handleSelect}
+              />
+              {roundInfo && <Confetti recycle={false} />}
+            </div>
           </>
         )}
       </div>

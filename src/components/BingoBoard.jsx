@@ -1,19 +1,25 @@
 import React from 'react';
+import classNames from 'classnames';
 
-const BingoBoard = ({ board, selected, onSelect }) => {
+export default function BingoBoard({ board, selected, onSelect }) {
   return (
-    <div className="grid grid-cols-5 gap-1 max-w-lg mx-auto">
+    <div className="grid grid-cols-5 gap-1 sm:gap-2 max-w-[95vw] sm:max-w-[500px] mx-auto">
       {board.map((term, idx) => (
-        <div
+        <button
           key={idx}
-          onClick={() => term !== 'FREE' && onSelect(idx)}
-          className={`h-24 flex items-center justify-center p-2 border-2 ${selected[idx] ? 'bg-blue-600' : 'bg-gray-800'} cursor-pointer`}
+          onClick={() => onSelect(idx)}
+          className={classNames(
+            "aspect-square flex items-center justify-center rounded text-center font-semibold p-1",
+            "transition duration-200 ease-in-out",
+            selected[idx]
+              ? "bg-green-500 text-black"
+              : "bg-gray-700 hover:bg-gray-600 text-white",
+            "text-xs sm:text-sm md:text-base"
+          )}
         >
-          <span className="text-center text-sm">{term}</span>
-        </div>
+          {term}
+        </button>
       ))}
     </div>
   );
-};
-
-export default BingoBoard;
+}
