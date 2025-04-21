@@ -1,120 +1,185 @@
+// src/App.jsx
 import React, { useEffect, useState } from 'react';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, getDocs, getDoc, setDoc, updateDoc, writeBatch, increment } from 'firebase/firestore';
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  onAuthStateChanged
+} from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  setDoc,
+  onSnapshot,
+  increment
+} from 'firebase/firestore';
 import firebaseApp from './firebase';
 import { generateBoard, checkWin } from './utils';
 import BingoBoard from './components/BingoBoard';
 import Leaderboard from './components/Leaderboard';
 import Confetti from 'react-confetti';
 
-function App() {
+export default function App() {
   const auth = getAuth(firebaseApp);
-  const db = getFirestore(firebaseApp);
+  const db   = getFirestore(firebaseApp);
   const provider = new GoogleAuthProvider();
 
-  const [user, setUser] = useState(null);
-  const [terms, setTerms] = useState([]);
-  const [board, setBoard] = useState([]);
-  const [selected, setSelected] = useState([]);
+  const [user,        setUser]        = useState(null);
+  const [terms,       setTerms]       = useState([]);
+  const [board,       setBoard]       = useState([]);
+  const [selected,    setSelected]    = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
-  const [winInfo, setWinInfo] = useState(null);
+  const [roundInfo,   setRoundInfo]   = useState(null);
 
-  // Fetch terms on login
+  // 1) Authenticate & load initial data
   useEffect(() => {
-    onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        setUser(u);
-        // Load terms
-        const termsSnap = await getDocs(collection(db, 'terms'));
-        const allTerms = termsSnap.docs.map(d => d.data().text);
-        setTerms(allTerms);
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (!u) return;
+      setUser(u);
 
-        // Load or create board
-        const boardRef = doc(db, 'boards', u.uid);
-        const boardSnap = await getDoc(boardRef);
-        if (!boardSnap.exists()) {
-          const newBoard = generateBoard(allTerms);
-          const sel = Array(25).fill(false);
-          sel[12] = true;
-          await setDoc(boardRef, { terms: newBoard, selected: sel });
-          setBoard(newBoard);
-          setSelected(sel);
-        } else {
-          const data = boardSnap.data();
-          setBoard(data.terms);
-          setSelected(data.selected);
-        }
+      // Load bingo terms
+      const termsSnap = await getDocs(collection(db, 'terms'));
+      const allTerms  = termsSnap.docs.map(d => d.data().text);
+      setTerms(allTerms);
 
-        // Load leaderboard
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const lb = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setLeaderboard(lb);
+      // Load or create this user's board
+      const boardRef  = doc(db, 'boards', u.uid);
+      const boardSnap = await getDoc(boardRef);
+      if (!boardSnap.exists()) {
+        const newBoard = generateBoard(allTerms);
+        const sel0 = Array(25).fill(false);
+        sel0[12] = true;
+        await setDoc(boardRef, { terms: newBoard, selected: sel0 });
+        setBoard(newBoard);
+        setSelected(sel0);
+      } else {
+        const data = boardSnap.data();
+        setBoard(data.terms);
+        setSelected(data.selected);
+      }
+
+      // Load leaderboard
+      const usersSnap = await getDocs(collection(db, 'users'));
+      setLeaderboard(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return unsubscribe;
+  }, [auth, db]);
+
+  // 2) Listen for round broadcasts, but ignore the initial snapshot
+  useEffect(() => {
+    const roundRef = doc(db, 'round', 'current');
+    let first = true;
+
+    const unsubscribe = onSnapshot(roundRef, snap => {
+      if (first) {
+        first = false;
+        return; // skip the initial load
+      }
+      if (snap.exists()) {
+        const { winnerName, timestamp } = snap.data();
+        setRoundInfo({ winnerName, timestamp });
       }
     });
-  }, []);
 
-  // Handle cell click
-  const handleSelect = async (index) => {
-    if (!user) return;
+    return unsubscribe;
+  }, [db]);
+
+  // 3) Handle user selecting a square
+  const handleSelect = async (idx) => {
+    if (!user || board[idx] === 'FREE') return;
+
+    // Toggle and persist selection
     const newSel = [...selected];
-    newSel[index] = !newSel[index];
+    newSel[idx] = !newSel[idx];
     setSelected(newSel);
-    await updateDoc(doc(db, 'boards', user.uid), { selected: newSel });
+    await setDoc(
+      doc(db, 'boards', user.uid),
+      { selected: newSel },
+      { merge: true }
+    );
 
+    // Check for bingo
     if (checkWin(newSel)) {
       const winnerName = user.displayName || 'Anonymous';
-      const userRef = doc(db, 'users', user.uid);
       const now = Date.now();
-      await updateDoc(userRef, {
-        weeklyWins: increment(1),
-        allTimeWins: increment(1),
-        lastWin: now
-      });
 
-      setWinInfo({ name: winnerName });
-      // Confetti and new round
-      setTimeout(async () => {
-        const batch = writeBatch(db);
-        const boardDocs = await getDocs(collection(db, 'boards'));
-        boardDocs.docs.forEach(d => {
-          const newBoard = generateBoard(terms);
-          const newSel = Array(25).fill(false);
-          newSel[12] = true;
-          batch.update(doc(db, 'boards', d.id), { terms: newBoard, selected: newSel });
-        });
-        await batch.commit();
-        // Reload current board
-        const curSnap = await getDoc(doc(db, 'boards', user.uid));
-        const curData = curSnap.data();
-        setBoard(curData.terms);
-        setSelected(curData.selected);
-        setWinInfo(null);
-      }, 4000);
+      // Record the win counts
+      const userRef = doc(db, 'users', user.uid);
+      await setDoc(
+        userRef,
+        {
+          weeklyWins: increment(1),
+          allTimeWins: increment(1),
+          lastWin: now
+        },
+        { merge: true }
+      );
+
+      // Broadcast the new round
+      const roundRef = doc(db, 'round', 'current');
+      await setDoc(roundRef, { winnerName, timestamp: now });
+
+      // Refresh leaderboard
+      const usersSnap = await getDocs(collection(db, 'users'));
+      setLeaderboard(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     }
   };
 
+  // 4) Reset only this user's board when they click the banner button
+  const resetMyBoard = async () => {
+    const newBoard = generateBoard(terms);
+    const sel0 = Array(25).fill(false);
+    sel0[12] = true;
+    await setDoc(
+      doc(db, 'boards', user.uid),
+      { terms: newBoard, selected: sel0 },
+      { merge: true }
+    );
+    setBoard(newBoard);
+    setSelected(sel0);
+    setRoundInfo(null);
+  };
+
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-gray-900 text-white">
       <Leaderboard data={leaderboard} />
+
       <div className="flex-1 p-4">
         {!user ? (
-          <button onClick={() => signInWithPopup(auth, provider)} className="bg-blue-500 px-4 py-2 rounded">
+          <button
+            onClick={() => signInWithPopup(auth, provider)}
+            className="bg-blue-500 px-4 py-2 rounded"
+          >
             Sign in with Google
           </button>
         ) : (
           <>
-            {winInfo && (
-              <div className="fixed top-0 w-full bg-green-600 text-white text-center py-2">
-                🎉 {winInfo.name} got a BINGO! New round starting...
+            {roundInfo && (
+              <div className="fixed top-0 w-full bg-green-600 text-center py-3 z-10">
+                🎉 {roundInfo.winnerName} got a BINGO!
+                <button
+                  onClick={resetMyBoard}
+                  className="ml-4 px-3 py-1 bg-gray-800 rounded hover:bg-gray-700"
+                >
+                  Reset my board
+                </button>
               </div>
             )}
-            <BingoBoard board={board} selected={selected} onSelect={handleSelect} />
-            <Confetti recycle={!!winInfo} />
+
+            <BingoBoard
+              board={board}
+              selected={selected}
+              onSelect={handleSelect}
+            />
+
+            {roundInfo && <Confetti recycle={false} />}
           </>
         )}
       </div>
     </div>
   );
 }
-
-export default App;
