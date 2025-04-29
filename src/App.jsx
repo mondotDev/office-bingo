@@ -21,6 +21,7 @@ import BingoBoard from './components/BingoBoard';
 import Leaderboard from './components/Leaderboard';
 import Confetti from 'react-confetti';
 import SettingsMenu from './components/SettingsMenu';
+import SharedBoards from './components/SharedBoards';
 
 export default function App() {
   const auth = getAuth(firebaseApp);
@@ -33,6 +34,7 @@ export default function App() {
   const [selected, setSelected] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [roundInfo, setRoundInfo] = useState(null);
+  const [allBoards, setAllBoards] = useState([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -92,6 +94,35 @@ export default function App() {
     });
 
     return unsubscribe;
+  }, [db]);
+
+  useEffect(() => {
+    const fetchSharedBoards = async () => {
+      const [boardsSnap, usersSnap] = await Promise.all([
+        getDocs(collection(db, 'boards')),
+        getDocs(collection(db, 'users'))
+      ]);
+
+      const userMap = {};
+      usersSnap.forEach((doc) => {
+        userMap[doc.id] = doc.data().name || 'Anonymous';
+      });
+
+      const boardsData = boardsSnap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          uid: doc.id,
+          name: userMap[doc.id] || 'Anonymous',
+          selected: data.selected || []
+        };
+      });
+
+      setAllBoards(boardsData);
+    };
+
+    fetchSharedBoards();
+    const interval = setInterval(fetchSharedBoards, 5 * 60 * 1000); // every 5 minutes
+    return () => clearInterval(interval);
   }, [db]);
 
   const handleSelect = async (idx) => {
@@ -182,6 +213,7 @@ export default function App() {
                 onSelect={handleSelect}
               />
               {roundInfo && <Confetti recycle={false} />}
+              <SharedBoards boards={allBoards} />
             </div>
           </>
         )}
