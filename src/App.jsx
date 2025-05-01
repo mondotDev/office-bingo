@@ -35,37 +35,18 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [roundInfo, setRoundInfo] = useState(null);
   const [allBoards, setAllBoards] = useState([]);
-  const lastFetchRef = useRef(0);
 
-  const fetchSharedBoards = async () => {
-    const now = Date.now();
-    if (now - lastFetchRef.current < 10000) return;
-    lastFetchRef.current = now;
-
-    const [boardsSnap, usersSnap] = await Promise.all([
-      getDocs(collection(db, 'boards')),
-      getDocs(collection(db, 'users'))
-    ]);
-
+  const fetchUsersMap = async () => {
+    const usersSnap = await getDocs(collection(db, 'users'));
     const userMap = {};
     usersSnap.forEach((doc) => {
       userMap[doc.id] = doc.data().name || 'Anonymous';
     });
-
-    const boardsData = boardsSnap.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        uid: doc.id,
-        name: userMap[doc.id] || 'Anonymous',
-        selected: data.selected || []
-      };
-    });
-
-    setAllBoards(boardsData);
+    return userMap;
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (!u) {
         setUser(null);
         setBoard([]);
@@ -101,11 +82,9 @@ export default function App() {
 
       const usersSnap = await getDocs(collection(db, 'users'));
       setLeaderboard(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-
-      await fetchSharedBoards();
     });
 
-    return unsubscribe;
+    return unsubscribeAuth;
   }, [auth, db]);
 
   useEffect(() => {
@@ -124,6 +103,28 @@ export default function App() {
     });
 
     return unsubscribe;
+  }, [db]);
+
+  useEffect(() => {
+    const unsubscribeBoards = onSnapshot(collection(db, 'boards'), async () => {
+      const [boardsSnap, userMap] = await Promise.all([
+        getDocs(collection(db, 'boards')),
+        fetchUsersMap()
+      ]);
+
+      const boardsData = boardsSnap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          uid: doc.id,
+          name: userMap[doc.id] || 'Anonymous',
+          selected: data.selected || []
+        };
+      });
+
+      setAllBoards(boardsData);
+    });
+
+    return unsubscribeBoards;
   }, [db]);
 
   const handleSelect = async (idx) => {
@@ -162,8 +163,6 @@ export default function App() {
       const usersSnap = await getDocs(collection(db, 'users'));
       setLeaderboard(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }
-
-    await fetchSharedBoards();
   };
 
   const resetMyBoard = async () => {
@@ -178,7 +177,6 @@ export default function App() {
     setBoard(newBoard);
     setSelected(sel0);
     setRoundInfo(null);
-    await fetchSharedBoards();
   };
 
   return (
