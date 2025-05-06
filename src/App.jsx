@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from "react";
 import {
   getAuth,
   signInWithPopup,
   GoogleAuthProvider,
-  onAuthStateChanged
-} from 'firebase/auth';
+  onAuthStateChanged,
+} from "firebase/auth";
 import {
   getFirestore,
   collection,
@@ -13,15 +13,15 @@ import {
   getDoc,
   setDoc,
   onSnapshot,
-  increment
-} from 'firebase/firestore';
-import firebaseApp from './firebase';
-import { generateBoard, checkWin } from './utils';
-import BingoBoard from './components/BingoBoard';
-import Leaderboard from './components/Leaderboard';
-import Confetti from 'react-confetti';
-import SettingsMenu from './components/SettingsMenu';
-import SharedBoards from './components/SharedBoards';
+  increment,
+} from "firebase/firestore";
+import firebaseApp from "./firebase";
+import { generateBoard, checkWin } from "./utils";
+import BingoBoard from "./components/BingoBoard";
+import Leaderboard from "./components/Leaderboard";
+import Confetti from "react-confetti";
+import SettingsMenu from "./components/SettingsMenu";
+import SharedBoards from "./components/SharedBoards";
 
 export default function App() {
   const auth = getAuth(firebaseApp);
@@ -37,10 +37,10 @@ export default function App() {
   const [allBoards, setAllBoards] = useState([]);
 
   const fetchUsersMap = async () => {
-    const usersSnap = await getDocs(collection(db, 'users'));
+    const usersSnap = await getDocs(collection(db, "users"));
     const userMap = {};
     usersSnap.forEach((doc) => {
-      userMap[doc.id] = doc.data().name || 'Anonymous';
+      userMap[doc.id] = doc.data().name || "Anonymous";
     });
     return userMap;
   };
@@ -56,16 +56,16 @@ export default function App() {
       setUser(u);
 
       await setDoc(
-        doc(db, 'users', u.uid),
+        doc(db, "users", u.uid),
         { name: u.displayName },
         { merge: true }
       );
 
-      const termsSnap = await getDocs(collection(db, 'terms'));
+      const termsSnap = await getDocs(collection(db, "terms"));
       const allTerms = termsSnap.docs.map((d) => d.data().text);
       setTerms(allTerms);
 
-      const boardRef = doc(db, 'boards', u.uid);
+      const boardRef = doc(db, "boards", u.uid);
       const boardSnap = await getDoc(boardRef);
       if (!boardSnap.exists()) {
         const newBoard = generateBoard(allTerms);
@@ -80,7 +80,7 @@ export default function App() {
         setSelected(data.selected);
       }
 
-      const usersSnap = await getDocs(collection(db, 'users'));
+      const usersSnap = await getDocs(collection(db, "users"));
       setLeaderboard(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
 
@@ -88,36 +88,52 @@ export default function App() {
   }, [auth, db]);
 
   useEffect(() => {
-    const roundRef = doc(db, 'round', 'current');
-    let first = true;
+    const roundRef = doc(db, "round", "current");
 
-    const unsubscribe = onSnapshot(roundRef, (snap) => {
-      if (first) {
-        first = false;
-        return;
-      }
-      if (snap.exists()) {
-        const { winnerName, timestamp } = snap.data();
+    const unsubscribe = onSnapshot(roundRef, async (snap) => {
+      if (!snap.exists()) return;
+
+      const { winnerName, timestamp } = snap.data();
+      const storedRoundId = localStorage.getItem("roundId");
+
+      if (storedRoundId !== String(timestamp)) {
+        localStorage.setItem("roundId", String(timestamp));
+        setRoundInfo({ winnerName, timestamp });
+
+        if (user && terms.length > 0) {
+          const boardRef = doc(db, "boards", user.uid);
+          const newBoard = generateBoard(terms);
+          const sel0 = Array(25).fill(false);
+          sel0[12] = true;
+          await setDoc(
+            boardRef,
+            { terms: newBoard, selected: sel0 },
+            { merge: true }
+          );
+          setBoard(newBoard);
+          setSelected(sel0);
+        }
+      } else {
         setRoundInfo({ winnerName, timestamp });
       }
     });
 
     return unsubscribe;
-  }, [db]);
+  }, [db, user, terms]);
 
   useEffect(() => {
-    const unsubscribeBoards = onSnapshot(collection(db, 'boards'), async () => {
+    const unsubscribeBoards = onSnapshot(collection(db, "boards"), async () => {
       const [boardsSnap, userMap] = await Promise.all([
-        getDocs(collection(db, 'boards')),
-        fetchUsersMap()
+        getDocs(collection(db, "boards")),
+        fetchUsersMap(),
       ]);
 
       const boardsData = boardsSnap.docs.map((doc) => {
         const data = doc.data();
         return {
           uid: doc.id,
-          name: userMap[doc.id] || 'Anonymous',
-          selected: data.selected || []
+          name: userMap[doc.id] || "Anonymous",
+          selected: data.selected || [],
         };
       });
 
@@ -128,21 +144,21 @@ export default function App() {
   }, [db]);
 
   const handleSelect = async (idx) => {
-    if (!user || board[idx] === 'FREE') return;
+    if (!user || board[idx] === "FREE") return;
 
     const newSel = [...selected];
     newSel[idx] = !newSel[idx];
     setSelected(newSel);
 
     await setDoc(
-      doc(db, 'boards', user.uid),
+      doc(db, "boards", user.uid),
       { selected: newSel },
       { merge: true }
     );
 
     if (checkWin(newSel)) {
       const now = Date.now();
-      const userRef = doc(db, 'users', user.uid);
+      const userRef = doc(db, "users", user.uid);
 
       await setDoc(
         userRef,
@@ -150,17 +166,17 @@ export default function App() {
           name: user.displayName,
           weeklyWins: increment(1),
           allTimeWins: increment(1),
-          lastWin: now
+          lastWin: now,
         },
         { merge: true }
       );
 
-      await setDoc(doc(db, 'round', 'current'), {
-        winnerName: user.displayName || 'Anonymous',
-        timestamp: now
+      await setDoc(doc(db, "round", "current"), {
+        winnerName: user.displayName || "Anonymous",
+        timestamp: now,
       });
 
-      const usersSnap = await getDocs(collection(db, 'users'));
+      const usersSnap = await getDocs(collection(db, "users"));
       setLeaderboard(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }
   };
@@ -170,7 +186,7 @@ export default function App() {
     const sel0 = Array(25).fill(false);
     sel0[12] = true;
     await setDoc(
-      doc(db, 'boards', user.uid),
+      doc(db, "boards", user.uid),
       { terms: newBoard, selected: sel0 },
       { merge: true }
     );
@@ -178,6 +194,17 @@ export default function App() {
     setSelected(sel0);
     setRoundInfo(null);
   };
+
+  useEffect(() => {
+    const maxAge = 1000 * 60 * 60 * 12; // 12 hours
+    const storedRoundId = localStorage.getItem("roundId");
+    const lastUpdated = parseInt(storedRoundId);
+
+    if (storedRoundId && (!lastUpdated || Date.now() - lastUpdated > maxAge)) {
+      localStorage.removeItem("roundId");
+      console.log("Old roundId cleared from localStorage");
+    }
+  }, []);
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white overflow-hidden">
