@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   getAuth,
   signInWithPopup,
@@ -36,6 +36,7 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [roundInfo, setRoundInfo] = useState(null);
   const [allBoards, setAllBoards] = useState([]);
+  const [currentRoundId, setCurrentRoundId] = useState(null);
 
   const fetchUsersMap = async () => {
     const usersSnap = await getDocs(collection(db, 'users'));
@@ -95,11 +96,14 @@ export default function App() {
       if (!snap.exists()) return;
 
       const { winnerName, timestamp } = snap.data();
+      const normalizedTimestamp = String(timestamp);
       const storedRoundId = localStorage.getItem('roundId');
 
-      if (storedRoundId !== String(timestamp)) {
-        localStorage.setItem('roundId', String(timestamp));
+      if (storedRoundId !== normalizedTimestamp) {
+        // First time seeing this round
+        localStorage.setItem('roundId', normalizedTimestamp);
         setRoundInfo({ winnerName, timestamp });
+        setCurrentRoundId(normalizedTimestamp);
 
         if (user && terms.length > 0) {
           const boardRef = doc(db, 'boards', user.uid);
@@ -111,7 +115,9 @@ export default function App() {
           setSelected(sel0);
         }
       } else {
-        setRoundInfo({ winnerName, timestamp });
+        // Already saw this round before; don't re-show banner
+        setRoundInfo(null);
+        setCurrentRoundId(normalizedTimestamp);
       }
     });
 
@@ -203,9 +209,9 @@ export default function App() {
     setRoundInfo(null);
   };
 
-  const shouldShowStaleBanner = !roundInfo &&
-    checkWin(selected) &&
-    localStorage.getItem('roundId');
+  const storedRoundId = localStorage.getItem('roundId');
+  const isStaleWin = checkWin(selected) && storedRoundId && storedRoundId === currentRoundId;
+  const shouldShowStaleBanner = !roundInfo && isStaleWin;
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-gray-900 text-white overflow-hidden">
