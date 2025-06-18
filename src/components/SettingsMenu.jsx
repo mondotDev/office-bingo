@@ -24,9 +24,7 @@ export default function SettingsMenu({ user }) {
   }, []);
 
   const handleSignOut = () => {
-    signOut(auth).catch((err) => {
-      console.error("Sign out failed:", err);
-    });
+    signOut(auth).catch(() => {});
   };
 
   return (

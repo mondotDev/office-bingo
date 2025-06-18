@@ -153,7 +153,6 @@ export default function App() {
 
     if (storedRoundId && (!lastUpdated || Date.now() - lastUpdated > maxAge)) {
       localStorage.removeItem('roundId');
-      console.log('Old roundId cleared from localStorage');
     }
   }, []);
 
