@@ -11,35 +11,36 @@ This is a dark-mode Bingo game built with React, Vite, Tailwind CSS, and Firebas
 
 ## Setup
 
-1. **Clone the repo**  
+1. **Clone the repo**
    ```bash
    git clone <repo-url>
    cd bingo-game
    ```
 
-2. **Install dependencies**  
+   Install dependencies before running any npm scripts:
+
    ```bash
    npm install
+   # or use `npm ci` for reproducible installs
    ```
-
-3. **Environment variables**  
+2. **Environment variables**
    Copy the example file and fill in your Firebase config:
    ```bash
    cp .env.example .env.local
    ```
    Edit `.env.local` with your Firebase project credentials.
 
-4. **Firebase setup**  
+3. **Firebase setup**
    - Create a Firebase project  
    - Enable **Authentication** (Google Sign-In)  
    - Enable **Firestore** with rules for `terms`, `boards`, and `users` collections  
 
-5. **Run the app**  
+4. **Run the app**
    ```bash
    npm run dev
    ```
 
-6. **Tests**  
+5. **Tests**
    ```bash
    npm run test
    ```
